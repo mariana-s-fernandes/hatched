@@ -1,15 +1,15 @@
 import math
 import os
 import random
-from typing import Any, Iterable, Tuple
+from typing import Tuple, Iterable, Any, Union
 
 import cv2
-import matplotlib.collections
 import matplotlib.pyplot as plt
+import matplotlib.collections
 import numpy as np
 import shapely.ops
 import svgwrite as svgwrite
-from shapely.geometry import LinearRing, MultiLineString, Polygon
+from shapely.geometry import Polygon, LinearRing, MultiLineString
 from skimage import measure
 
 
@@ -56,6 +56,12 @@ def _build_diagonal_hatch(delta: float, offset: float, w: int, h: int, angle: fl
     angle = angle % 180
     # Convert angle to rads
     angle_rad = angle * math.pi / 180
+
+    if angle % 180 != 0:
+        if delta != 0:
+            delta /= math.sin(angle_rad)
+        if offset != 0:
+            offset /= math.sin(angle_rad)
 
     lines = []
     # Draw vertical lines
@@ -187,76 +193,72 @@ def _build_hatch(
     circular: bool = False,
     center: Tuple[float, float] = (0.5, 0.5),
     invert: bool = False,
-    hatch_angle: float = 45,
+    hatch_angle: Union[float, Tuple[float, float, float]] = 45,
 ) -> Tuple[MultiLineString, Any, Any, Any]:
     if invert:
         levels = tuple(255 - i for i in reversed(levels))
 
     h, w = img.shape
+    n_levels = len(levels)
 
     # border for contours to be closed shapes
     r = np.zeros(shape=(img.shape[0] + 2, img.shape[1] + 2))
     r[1:-1, 1:-1] = img
 
     # Find contours at a constant value of 0.8
-    black_cnt = measure.find_contours(r, levels[0])
-    dark_cnt = measure.find_contours(r, levels[1])
-    light_cnt = measure.find_contours(r, levels[2])
+    contours = [measure.find_contours(r, levels[i]) for i in range(n_levels)]
 
-    light_mls = MultiLineString(np.empty(shape=(0, 2, 2)))
-    dark_mls = MultiLineString(np.empty(shape=(0, 2, 2)))
-    black_mls = MultiLineString(np.empty(shape=(0, 2, 2)))
+    mls = [MultiLineString(np.empty(shape=(0, 2, 2))) for i in range(n_levels)]
 
     try:
-        black_p = _build_mask(black_cnt)
-        dark_p = _build_mask(dark_cnt)
-        light_p = _build_mask(light_cnt)
+        mask = [_build_mask(i) for i in contours]
 
         extra_args = {}
         if circular:
-            extra_args["center"] = center
-            build_func = _build_circular_hatch
+            extra_args["center"] = [center for i in range(len(levels))]
+            lines = [
+                _build_circular_hatch(4 * hatch_pitch, 0, w, h, center=center)
+                for i in range(len(levels))
+            ]
         else:
             extra_args["angle"] = hatch_angle
-            build_func = _build_diagonal_hatch
             # correct offset to ensure desired distance between hatches
-            if hatch_angle % 180 != 0:
-                hatch_pitch /= math.sin((hatch_angle % 180) * math.pi / 180)
+            if not isinstance(hatch_angle, Tuple):
+                hatch_angle = (hatch_angle, hatch_angle, hatch_angle)
 
-        light_lines = build_func(4 * hatch_pitch, 0, w, h, **extra_args)
-        dark_lines = build_func(4 * hatch_pitch, 2 * hatch_pitch, w, h, **extra_args)
-        black_lines = build_func(2 * hatch_pitch, hatch_pitch, w, h, **extra_args)
+            delta_factors = [1, 1, 1]  # [4, 4, 2]
+            offset_factors = [4, 2, 1]  # [0, 2, 1]
+            lines = [
+                _build_diagonal_hatch(
+                    delta_factors[i] * hatch_pitch,
+                    offset_factors[i] * hatch_pitch,
+                    w,
+                    h,
+                    angle=hatch_angle[i],
+                )
+                for i in range(n_levels)
+            ]
 
         frame = Polygon([(3, 3), (w - 6, 3), (w - 6, h - 6), (3, h - 6)])
 
-        light_mls = shapely.ops.linemerge(
-            MultiLineString([line for line in light_lines])
-            .difference(light_p)
-            .intersection(frame)
-        )
-        dark_mls = shapely.ops.linemerge(
-            MultiLineString([line for line in dark_lines])
-            .difference(dark_p)
-            .intersection(frame)
-        )
-        black_mls = shapely.ops.linemerge(
-            MultiLineString([line for line in black_lines])
-            .difference(black_p)
-            .intersection(frame)
-        )
+        mls_ = [
+            MultiLineString(lines[i]).difference(mask[i]).intersection(frame)
+            for i in range(n_levels)
+        ]
+
+        mls = [
+            shapely.ops.linemerge([i for i in mls_[j].geoms if i.length >= 2])
+            for j in range(n_levels)
+        ]
+
     except Exception as exc:
         print(f"Error: {exc}")
 
-    return (
-        MultiLineString(
-            [ls for ls in light_mls.geoms]
-            + [ls for ls in dark_mls.geoms]
-            + [ls for ls in black_mls.geoms]
-        ),
-        black_cnt,
-        dark_cnt,
-        light_cnt,
-    )
+    all_lines = []
+    for i in range(n_levels):
+        all_lines.extend([ls for ls in mls[i].geoms])
+
+    return (MultiLineString(all_lines), *contours)
 
 
 def hatch(
@@ -270,7 +272,7 @@ def hatch(
     invert: bool = False,
     circular: bool = False,
     center: Tuple[float, float] = (0.5, 0.5),
-    hatch_angle: float = 45,
+    hatch_angle: Union[float, Tuple[float, float, float]] = 45,
     show_plot: bool = True,
     save_svg: bool = True,
 ) -> MultiLineString:
@@ -290,7 +292,8 @@ def hatch(
     :param circular: use circular hatching instead of diagonal
     :param center: relative x and y position for the center of circles when using circular
         hatching. Defaults to (0.5, 0.5) corresponding to the center of the image
-    :param hatch_angle: angle that defines hatching inclination (degrees)
+    :param hatch_angle: angle that defines hatching inclination (degrees). To choose an angle
+        per layer, pass a tuple.
     :param show_plot: display contours and final results with matplotlib
     :param save_svg: controls whether or not an output svg file is created
     :return: MultiLineString Shapely object of the resulting hatch pattern
