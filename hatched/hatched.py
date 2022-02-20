@@ -213,12 +213,20 @@ def _build_hatch(
 
     try:
         mask = [_build_mask(i) for i in contours]
-
+        delta_factors = [4, 4, 4]
+        offset_factors = [0, 2, 1]
         extra_args = {}
+
         if circular:
             extra_args["center"] = [center for i in range(len(levels))]
             lines = [
-                _build_circular_hatch(4 * hatch_pitch, 0, w, h, center=center)
+                _build_circular_hatch(
+                    delta_factors[i] * hatch_pitch,
+                    offset_factors[i] * hatch_pitch,
+                    w,
+                    h,
+                    center=center,
+                )
                 for i in range(len(levels))
             ]
         else:
@@ -226,8 +234,6 @@ def _build_hatch(
             if not isinstance(hatch_angle, Tuple):
                 hatch_angle = (hatch_angle, hatch_angle, hatch_angle)
 
-            delta_factors = [1, 1, 1]  # [4, 4, 2]
-            offset_factors = [4, 2, 1]  # [0, 2, 1]
             lines = [
                 _build_diagonal_hatch(
                     delta_factors[i] * hatch_pitch,
