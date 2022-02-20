@@ -57,6 +57,7 @@ def _build_diagonal_hatch(delta: float, offset: float, w: int, h: int, angle: fl
     # Convert angle to rads
     angle_rad = angle * math.pi / 180
 
+    # correct offset to ensure desired distance between hatches
     if angle % 180 != 0:
         if delta != 0:
             delta /= math.sin(angle_rad)
@@ -222,7 +223,6 @@ def _build_hatch(
             ]
         else:
             extra_args["angle"] = hatch_angle
-            # correct offset to ensure desired distance between hatches
             if not isinstance(hatch_angle, Tuple):
                 hatch_angle = (hatch_angle, hatch_angle, hatch_angle)
 
