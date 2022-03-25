@@ -6,6 +6,7 @@ from typing import Tuple, Iterable, Any, Union
 import cv2
 import matplotlib.pyplot as plt
 import matplotlib.collections
+import matplotlib.colors as mcolors
 import numpy as np
 import shapely.ops
 import svgwrite as svgwrite
@@ -194,7 +195,7 @@ def _build_hatch(
     circular: bool = False,
     center: Tuple[float, float] = (0.5, 0.5),
     invert: bool = False,
-    hatch_angle: Union[float, Tuple[float, float, float]] = 45,
+    hatch_angle: Union[float, Tuple[float]] = 45,
 ) -> Tuple[MultiLineString, Any, Any, Any]:
 
     if not isinstance(levels, Tuple):
@@ -217,12 +218,12 @@ def _build_hatch(
 
     try:
         mask = [_build_mask(i) for i in contours]
-        delta_factors = [4, 4, 4]
-        offset_factors = [0, 2, 1]
+        delta_factors = [i+1 for i in range(n_levels)]*2
+        offset_factors = [0]*n_levels
         extra_args = {}
 
         if circular:
-            extra_args["center"] = [center for i in range(len(levels))]
+            extra_args["center"] = [center for i in range(n_levels)]
             lines = [
                 _build_circular_hatch(
                     delta_factors[i] * hatch_pitch,
@@ -236,7 +237,7 @@ def _build_hatch(
         else:
             extra_args["angle"] = hatch_angle
             if not isinstance(hatch_angle, Tuple):
-                hatch_angle = (hatch_angle, hatch_angle, hatch_angle)
+                hatch_angle = (hatch_angle,)*n_levels
 
             lines = [
                 _build_diagonal_hatch(
@@ -291,7 +292,7 @@ def hatch(
     Create hatched shading vector for an image, display it and save it to svg.
     :param file_path: input image path
     :param hatch_pitch: hatching pitch in pixel (correspond to the densest possible hatching)
-    :param levels: pixel value of the 3 threshold between black, dark, light and white (0-255)
+    :param levels: pixel values of the threshold levels for different shades from black to white (0-255)
     :param blur_radius: blurring radius to apply on the input image (0 to disable)
     :param image_scale: scale factor to apply on the image before processing
     :param interpolation: interpolation to apply for scaling (typically either
@@ -303,7 +304,7 @@ def hatch(
     :param center: relative x and y position for the center of circles when using circular
         hatching. Defaults to (0.5, 0.5) corresponding to the center of the image
     :param hatch_angle: angle that defines hatching inclination (degrees). To choose an angle
-        per layer, pass a tuple.
+        per layer, pass a tuple the same size as levels.
     :param show_plot: display contours and final results with matplotlib
     :param save_svg: controls whether or not an output svg file is created
     :return: MultiLineString Shapely object of the resulting hatch pattern
@@ -347,8 +348,9 @@ def hatch(
             for cnt in contours:
                 plt.plot(cnt[:, 1], cnt[:, 0], spec, linewidth=2)
         
-        for c in cnts:
-            plot_cnt(c, "b-")
+        colors = list(mcolors.BASE_COLORS.keys())
+        for i, cnt in enumerate(cnts):
+            plot_cnt(cnt, f"{colors[i]}-")
 
         plt.subplot(1, 2, 2)
 
