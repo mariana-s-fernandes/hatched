@@ -190,12 +190,16 @@ def _load_image(
 def _build_hatch(
     img: np.ndarray,
     hatch_pitch: float = 5.0,
-    levels: Tuple[int, int, int] = (64, 128, 192),
+    levels: Union[int, Tuple[int]] = (64, 128, 192),
     circular: bool = False,
     center: Tuple[float, float] = (0.5, 0.5),
     invert: bool = False,
     hatch_angle: Union[float, Tuple[float, float, float]] = 45,
 ) -> Tuple[MultiLineString, Any, Any, Any]:
+
+    if not isinstance(levels, Tuple):
+        levels = (levels,)
+
     if invert:
         levels = tuple(255 - i for i in reversed(levels))
 
@@ -270,7 +274,7 @@ def _build_hatch(
 def hatch(
     file_path: str,
     hatch_pitch: float = 5,
-    levels: Tuple[int, int, int] = (64, 128, 192),
+    levels: Union[int, Tuple[int]] = (64, 128, 192),
     blur_radius: int = 10,
     image_scale: float = 1.0,
     interpolation: int = cv2.INTER_LINEAR,
@@ -278,7 +282,7 @@ def hatch(
     invert: bool = False,
     circular: bool = False,
     center: Tuple[float, float] = (0.5, 0.5),
-    hatch_angle: Union[float, Tuple[float, float, float]] = 45,
+    hatch_angle: Union[float, Tuple[float]] = 45,
     show_plot: bool = True,
     save_svg: bool = True,
 ) -> MultiLineString:
@@ -314,7 +318,7 @@ def hatch(
         invert=invert,
     )
 
-    mls, black_cnt, dark_cnt, light_cnt = _build_hatch(
+    mls, *cnts = _build_hatch(
         img,
         hatch_pitch=hatch_pitch,
         levels=levels,
@@ -342,10 +346,9 @@ def hatch(
         def plot_cnt(contours, spec):
             for cnt in contours:
                 plt.plot(cnt[:, 1], cnt[:, 0], spec, linewidth=2)
-
-        plot_cnt(black_cnt, "b-")
-        plot_cnt(dark_cnt, "g-")
-        plot_cnt(light_cnt, "r-")
+        
+        for c in cnts:
+            plot_cnt(c, "b-")
 
         plt.subplot(1, 2, 2)
 
