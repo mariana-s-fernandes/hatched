@@ -11,6 +11,7 @@ import shapely.ops
 import svgwrite as svgwrite
 from shapely.geometry import LinearRing, MultiLineString, Polygon
 from skimage import measure
+import vpype as vp
 
 
 def _build_circular_hatch(
@@ -158,15 +159,24 @@ def _save_to_svg(file_path: str, w: int, h: int, vectors: Iterable[MultiLineStri
 def _load_image(
     file_path: str,
     blur_radius: int = 10,
-    image_scale: float = 1.0,
+    area: Tuple[str, str] = ('auto', 'auto'),
     interpolation: int = cv2.INTER_LINEAR,
     h_mirror: bool = False,
     invert: bool = False,
 ) -> np.ndarray:
     # Load the image, resize it and apply blur
     img = cv2.imread(file_path, cv2.IMREAD_GRAYSCALE)
-    scale_x = int(img.shape[1] * image_scale)
-    scale_y = int(img.shape[0] * image_scale)
+
+    if area == ('auto', 'auto'):
+        scale_x = 1
+        scale_y = 1
+    
+    else:
+        scale_x = int(vp.convert_length(area[0]))
+        scale_y = int(vp.convert_length(area[1]))
+
+    
+
     img = cv2.resize(img, (scale_x, scale_y), interpolation=interpolation)
     if blur_radius > 0:
         img = cv2.blur(img, (blur_radius, blur_radius))
@@ -183,6 +193,7 @@ def _load_image(
 def _build_hatch(
     img: np.ndarray,
     hatch_pitch: float = 5.0,
+    rescale: float = 1.0,
     levels: Tuple[int, int, int] = (64, 128, 192),
     circular: bool = False,
     center: Tuple[float, float] = (0.5, 0.5),
@@ -193,7 +204,7 @@ def _build_hatch(
         levels = tuple(255 - i for i in reversed(levels))
 
     h, w = img.shape
-
+    hatch_pitch = hatch_pitch / rescale
     # border for contours to be closed shapes
     r = np.zeros(shape=(img.shape[0] + 2, img.shape[1] + 2))
     r[1:-1, 1:-1] = img
@@ -265,6 +276,7 @@ def hatch(
     levels: Tuple[int, int, int] = (64, 128, 192),
     blur_radius: int = 10,
     image_scale: float = 1.0,
+    area: Tuple[int, int] = ('auto', 'auto'),
     interpolation: int = cv2.INTER_LINEAR,
     h_mirror: bool = False,
     invert: bool = False,
@@ -282,6 +294,7 @@ def hatch(
     :param levels: pixel value of the 3 threshold between black, dark, light and white (0-255)
     :param blur_radius: blurring radius to apply on the input image (0 to disable)
     :param image_scale: scale factor to apply on the image before processing
+    :param area: defines size of output image
     :param interpolation: interpolation to apply for scaling (typically either
         `cv2.INTER_LINEAR` or `cv2.INTER_NEAREST`)
     :param h_mirror: apply horizontal mirror on the image if True
@@ -299,7 +312,7 @@ def hatch(
     img = _load_image(
         file_path=file_path,
         blur_radius=blur_radius,
-        image_scale=image_scale,
+        area=area,
         interpolation=interpolation,
         h_mirror=h_mirror,
         invert=invert,
@@ -308,6 +321,7 @@ def hatch(
     mls, black_cnt, dark_cnt, light_cnt = _build_hatch(
         img,
         hatch_pitch=hatch_pitch,
+        rescale=image_scale,
         levels=levels,
         invert=invert,
         circular=circular,
@@ -360,3 +374,8 @@ def hatch(
         plt.show()
 
     return mls
+
+
+if __name__ == "__main__":
+    hatch("skull.png", hatch_pitch=1, levels=(20, 100, 180), blur_radius=1, area=("10cm", "12cm"))
+
